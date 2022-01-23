@@ -1,0 +1,333 @@
+---
+title: "Informe Hackathon Team 25"
+subtitle: ICAI. Machine Learning.
+author: "Álvaro Rodriguez & Pablo Sanz"
+date: 'Curso 2021-22. Última actualización: `r format(Sys.time(), "%Y-%m-%d")`'
+header-includes:
+  \usepackage[spanish]{babel}
+linestretch: "1.25"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+\newpage
+
+
+
+
+
+
+```{r, message=FALSE, warning=FALSE,include=FALSE}
+library(tidyverse)
+library(caret)
+library(GGally)
+library(ROCR) 
+library(corrplot)
+library(rpart)
+library(rpart.plot)
+library(partykit)
+library(NeuralNetTools) 
+library(nnet)
+```
+
+
+```{r include=FALSE}
+Training <- read.table(file="TrainingSet1001_MIC.txt", header = TRUE, sep = " ")
+Datos <- Training
+Validation <- read.table(file="ValidationSet999_Mic.dat", header = TRUE, sep = " ")
+DatosEval <- Validation
+```
+
+
+
+
+
+
+```{r include=FALSE}
+Datos$Y <- as.factor(Datos$Y)
+```
+
+
+
+```{r include=FALSE}
+ggpairs(Datos, aes(col = Y))
+```
+
+
+
+
+```{r include=FALSE}
+boxplot_X10 <- boxplot(Datos$X10)
+boxplot_X10$out
+```
+
+```{r include=FALSE}
+boxplot_X9 <- boxplot(Datos$X9)
+boxplot_X9$out
+```
+
+```{r include=FALSE}
+boxplot_X6 <- boxplot(Datos$X6)
+boxplot_X6$out
+```
+
+
+```{r include=FALSE}
+ggcorr(Datos, label = TRUE)
+```
+
+
+
+
+
+```{r include=FALSE}
+Datos <- Datos %>%
+  filter(X10 < 8, X9 < 2.77, X6 < 2.8, X6 > -2.7) 
+```
+
+
+
+```{r include=FALSE}
+ctrl <- trainControl(method = "cv",                        
+                     number = 10,                          
+                     summaryFunction = defaultSummary,     
+                     classProbs = TRUE)   
+```
+
+
+
+```{r include=FALSE}
+trainIndex <- createDataPartition(Datos$Y,      
+                                  p = 0.8,      
+                                  list = FALSE, 
+                                  times = 1)   
+```
+
+
+
+```{r include=FALSE}
+fTR1 <- Datos[trainIndex,]
+fTS1 <- Datos[-trainIndex,]
+
+fTR_eval1 <- fTR1
+fTS_eval1 <- fTS1
+```
+
+```{r include=FALSE}
+inputs = c(6,9,10)
+tree.fit <- train(x = fTR1[,inputs],
+                  y = fTR1$Y,   
+                  method = "rpart",   
+                  control = rpart.control(minsplit = 5, 
+                                          minbucket = 5),
+                  parms = list(split = "gini"),   
+                  tuneGrid = data.frame(cp = seq(0,0.1,0.0005)),
+                  trControl = ctrl, 
+                  metric = "Accuracy")
+```
+
+```{r include=FALSE}
+ggplot(tree.fit)
+```
+
+
+```{r include=FALSE}
+varImp(tree.fit,scale = FALSE)
+```
+```{r include=FALSE}
+
+fTR_eval1$tree_prob <- predict(tree.fit, type="prob", newdata = fTR1)
+fTR_eval1$tree_pred <- predict(tree.fit, type="raw", newdata = fTR1)  
+
+fTS_eval1$tree_prob <- predict(tree.fit, type="prob", newdata = fTS1) 
+fTS_eval1$tree_pred <- predict(tree.fit, type="raw", newdata = fTS1) 
+```
+
+
+```{r include=FALSE}
+confusionMatrix(data = fTR_eval1$tree_pred,
+                reference = fTR_eval1$Y, 
+                positive = "YES")
+```
+
+```{r include=FALSE}
+confusionMatrix(fTS_eval1$tree_pred, 
+                fTS_eval1$Y, 
+                positive = "YES")
+```
+
+
+
+
+```{r include=FALSE}
+fTR2 <- Datos[trainIndex,]
+fTS2 <- Datos[-trainIndex,]
+
+fTR_eval2 <- fTR2
+fTS_eval2 <- fTS2
+```
+
+
+```{r include=FALSE}
+mlp.fit = train(form = Y ~ X3 + X6 + X9 + X10, 
+                data = fTR2,   
+                method = "nnet",
+                preProcess = c("center","scale"),
+                maxit = 250,   
+                tuneGrid = expand.grid(size = seq(5,25,length.out = 5),
+                                       decay=c(10^(-9),0.0001,0.001,0.01,0.1,1)),
+                trControl = ctrl, 
+                metric = "Accuracy")
+```
+
+```{r include=FALSE}
+mlp.fit
+```
+
+
+```{r include=FALSE}
+mlp.fit$finalModel
+```
+
+
+```{r include=FALSE}
+fTR_eval2$mlp_prob = predict(mlp.fit, type="prob" , newdata = fTR2) 
+fTR_eval2$mlp_pred = predict(mlp.fit, type="raw" , newdata = fTR2) 
+
+fTS_eval2$mlp_prob = predict(mlp.fit, type="prob" , newdata = fTS2) 
+fTS_eval2$mlp_pred = predict(mlp.fit, type="raw" , newdata = fTS2) 
+```
+
+
+
+```{r include=FALSE}
+confusionMatrix(data = fTR_eval2$mlp_pred,
+                reference = fTR_eval2$Y,
+                positive = "YES") 
+```
+
+
+```{r include=FALSE}
+confusionMatrix(fTS_eval2$mlp_pred, 
+                fTS_eval2$Y, 
+                positive = "YES")
+```
+
+
+
+
+```{r include=FALSE}
+Datos3 <- Datos %>%
+  filter(X10 < 8, X9 < 2.77, X6 < 2.8, X6 > -2.7, X3 > -3.02, X3 < 2.93) 
+```
+
+```{r include=FALSE}
+trainIndex3 <- createDataPartition(Datos3$Y,      
+                                  p = 0.8,      
+                                  list = FALSE, 
+                                  times = 1)   
+```
+
+
+
+```{r include=FALSE}
+fTR3 <- Datos3[trainIndex3,]
+fTS3 <- Datos3[-trainIndex3,]
+
+fTR_eval3 <- fTR3
+fTS_eval3 <- fTS3
+```
+
+
+
+```{r include=FALSE}
+mlp2.fit = train(form = Y ~ X3 + X6 + X9 + X10,
+                 data = fTR3,  
+                 method = "nnet",
+                 preProcess = c("center","scale"),
+                 maxit = 250,
+                 tuneGrid = expand.grid(size = seq(5,25,length.out = 5),
+                                        decay=c(10^(-9),0.0001,0.001,0.01,0.1,1)),
+                 trControl = ctrl, 
+                 metric = "Accuracy")
+```
+
+
+
+
+```{r include=FALSE}
+mlp2.fit
+```
+
+
+
+
+```{r include=FALSE}
+mlp2.fit$finalModel
+```
+
+```{r include=FALSE}
+fTR_eval3$mlp_prob = predict(mlp2.fit, type="prob" , newdata = fTR3) 
+fTR_eval3$mlp_pred = predict(mlp2.fit, type="raw" , newdata = fTR3) 
+
+fTS_eval3$mlp_prob = predict(mlp2.fit, type="prob" , newdata = fTS3)
+fTS_eval3$mlp_pred = predict(mlp2.fit, type="raw" , newdata = fTS3) 
+```
+
+
+
+
+
+```{r include=FALSE}
+confusionMatrix(data = fTR_eval3$mlp_pred,
+                reference = fTR_eval3$Y, 
+                positive = "YES") 
+```
+
+``````{r include=FALSE}
+
+confusionMatrix(fTS_eval3$mlp_pred, 
+                fTS_eval3$Y, 
+                positive = "YES")
+
+```
+
+
+# Comparación
+
+Lo primero que compararemos de los tres modelos será el accuracy (en intervalo de confianza) junto con el parámetro kappa.
+
+```{r}
+transformResultsR <- resamples(list(tree = tree.fit, nn1 = mlp.fit, nn2 = mlp2.fit))
+summary(transformResultsR)
+dotplot(transformResultsR) 
+```
+
+Tras ello miraremos a las diferentes curvas ROC que generan los modelos y veremos cual de ellas tiene mayor AUC.
+
+```{r, message=FALSE, warning=FALSE}
+library(pROC)
+reducedRoc <- roc(response = fTS_eval1$Y, fTS_eval1$tree_prob$YES)
+plot(reducedRoc, col="black")
+auc(reducedRoc)
+reducedRoc <- roc(response = fTS_eval2$Y, fTS_eval2$mlp_prob$YES)
+plot(reducedRoc, add=TRUE, col="red")
+auc(reducedRoc)
+reducedRoc <- roc(response = fTS_eval3$Y, fTS_eval3$mlp_prob$YES)
+plot(reducedRoc, add=TRUE, col="green")
+auc(reducedRoc)
+legend("bottomright", legend=c("Tree", "NN1","NN2"), col=c("black", "red","green"), lwd=2)
+```
+
+Por último miramos el accuracy en la matriz de confusión de test de cada uno de los modelos.
+
+```{r}
+confusionMatrix(fTS_eval1$tree_pred, fTS_eval1$Y, positive = "YES")$overall[1]
+confusionMatrix(fTS_eval2$mlp_pred, fTS_eval2$Y, positive = "YES")$overall[1]
+confusionMatrix(fTS_eval3$mlp_pred, fTS_eval3$Y, positive = "YES")$overall[1]
+```
+
+
